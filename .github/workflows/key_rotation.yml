@@ -1,68 +1,43 @@
-name: "24-Hour Key Rotation System"
+name: "Daily Key Rotation"  # Workflow name (shows in Actions tab)
 
 on:
   schedule:
-    - cron: '0 0 * * *'  # Runs daily at midnight UTC
-  workflow_dispatch:      # Allows manual triggering
+    - cron: '0 0 * * *'  # Daily at midnight UTC
+  workflow_dispatch:      # Allows manual runs
 
 env:
-  GIST_ID: "c8d41aaaccf3f186d16f5a955c2d44cd"  # Your Gist ID
-  KEY_FILE: "key.txt"    # Must match your Gist filename
+  # Your specific identifiers (case-sensitive):
+  GIST_ID: "c8d41aaaccf3f186d16f5a955c2d44cd"  # From your Gist URL
+  GIST_FILENAME: "key.txt"  # Must match EXACT filename in your Gist
 
 jobs:
-  rotate_key:
+  key_management:  # Internal job ID
+    name: "Refresh Access Key"  # Friendly name in UI
     runs-on: ubuntu-latest
     
     steps:
-    # Step 1: Generate a new secure key
-    - name: Generate access key
-      id: generate_key
+    - name: "🔐 Generate Secure Key"  # Step 1 name
+      id: keygen
       run: |
-        # Generate 32-character alphanumeric key
-        NEW_KEY=$(openssl rand -base64 24 | tr -dc 'a-zA-Z0-9' | head -c 32)
-        echo "KEY=$NEW_KEY" >> $GITHUB_ENV
-        echo "::add-mask::$NEW_KEY"  # Hide key in logs
-        echo "TIMESTAMP=$(date -u '+%Y-%m-%d %H:%M:%S UTC')" >> $GITHUB_ENV
-        
-    # Step 2: Update the Gist
-    - name: Update Gist
+        NEW_KEY=$(openssl rand -hex 32)
+        echo "NEW_KEY=$NEW_KEY" >> $GITHUB_ENV
+        echo "::add-mask::$NEW_KEY"
+
+    - name: "📤 Update Gist"  # Step 2 name
       uses: actions/github-script@v6
       with:
-        github-token: ${{ secrets.GIST_UPDATE_TOKEN }}
+        github-token: ${{ secrets.GIST_UPDATE_TOKEN }}  # Reference to secret
         script: |
-          const { KEY, TIMESTAMP } = process.env;
-          const expiry = new Date(new Date(TIMESTAMP).getTime() + 86400000).toUTCString();
-          
-          try {
-            await github.rest.gists.update({
-              gist_id: process.env.GIST_ID,
-              description: `🔑 Key updated on ${TIMESTAMP}`,
-              files: {
-                [process.env.KEY_FILE]: {
-                  content: [
-                    '# 🔑 AUTO-GENERATED ACCESS KEY',
-                    `# ⚠️ VALID FOR 24 HOURS ONLY`,
-                    '',
-                    `KEY: ${KEY}`,
-                    `GENERATED: ${TIMESTAMP}`,
-                    `EXPIRES: ${expiry}`,
-                    '',
-                    '⚠️ WARNING:',
-                    '- This key automatically refreshes daily',
-                    '- Do not share or commit this key',
-                    '- Do not use for production without additional security'
-                  ].join('\n')
-                }
+          await github.rest.gists.update({
+            gist_id: process.env.GIST_ID,
+            files: {
+              [process.env.GIST_FILENAME]: {
+                content: `KEY: ${process.env.NEW_KEY}\nUpdated: ${new Date().toISOString()}`
               }
-            });
-            console.log('✅ Gist updated successfully');
-          } catch (error) {
-            core.setFailed(`❌ Failed to update Gist: ${error.message}`);
-          }
-    
-    # Step 3: Verification
-    - name: Confirm update
+            }
+          })
+
+    - name: "✅ Verify Update"  # Step 3 name
       run: |
-        echo "Key rotation completed successfully!"
-        echo "View updated Gist:"
-        echo "https://gist.github.com/IYceA/$GIST_ID"
+        echo "Key rotated successfully!"
+        echo "View at: https://gist.github.com/IYceA/$GIST_ID"
